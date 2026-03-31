@@ -198,6 +198,12 @@ function isFingerRaised(landmarks, fingerName, handednessLabel) {
   return landmarks[tipIndex].y < landmarks[jointIndex].y;
 }
 
+function getRaisedFingers(landmarks, handednessLabel) {
+  return Object.keys(CHORDS).filter((fingerName) =>
+    isFingerRaised(landmarks, fingerName, handednessLabel)
+  );
+}
+
 function syncNotes(nextNotes) {
   for (const note of nextNotes) {
     if (!activeNotes.has(note)) {
@@ -255,11 +261,11 @@ function onResults(results) {
         radius: 4,
       });
 
-      for (const fingerName of Object.keys(CHORDS)) {
-        if (isFingerRaised(landmarks, fingerName, handedness)) {
-          CHORDS[fingerName].notes.forEach((note) => nextNotes.add(note));
-          activeChords.push(CHORDS[fingerName].name);
-        }
+      const raisedFingers = getRaisedFingers(landmarks, handedness);
+      if (raisedFingers.length === 1) {
+        const activeFinger = raisedFingers[0];
+        CHORDS[activeFinger].notes.forEach((note) => nextNotes.add(note));
+        activeChords.push(CHORDS[activeFinger].name);
       }
     });
   }
@@ -307,7 +313,7 @@ async function enableCamera() {
 
     await camera.start();
     setStatus(cameraStatus, "Camera connected");
-    gestureBadge.textContent = "Show one hand to trigger a chord";
+    gestureBadge.textContent = "Raise one finger to trigger a chord";
   } catch (error) {
     setStatus(cameraStatus, `Camera permission failed: ${error.message}`);
   }
