@@ -15,6 +15,7 @@ const midiButton = document.getElementById("midi-button");
 const midiOutputSelect = document.getElementById("midi-output");
 
 const cameraStatus = document.getElementById("camera-status");
+const audioStatus = document.getElementById("audio-status");
 const midiStatus = document.getElementById("midi-status");
 const chordStatus = document.getElementById("chord-status");
 const gestureBadge = document.getElementById("gesture-badge");
@@ -24,9 +25,35 @@ let camera;
 let midiAccess = null;
 let selectedOutputId = "";
 let activeNotes = new Set();
+let audioContext = null;
+let synthEnabled = false;
+const activeOscillators = new Map();
 
 function setStatus(element, message) {
   element.textContent = message;
+}
+
+function midiToFrequency(note) {
+  return 440 * 2 ** ((note - 69) / 12);
+}
+
+async function ensureAudioReady() {
+  if (!audioContext) {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+      setStatus(audioStatus, "Web Audio is not supported in this browser");
+      return false;
+    }
+    audioContext = new AudioContextClass();
+  }
+
+  if (audioContext.state === "suspended") {
+    await audioContext.resume();
+  }
+
+  synthEnabled = true;
+  setStatus(audioStatus, "Browser speaker output ready");
+  return true;
 }
 
 function getSelectedMidiOutput() {
@@ -36,19 +63,68 @@ function getSelectedMidiOutput() {
   return midiAccess.outputs.get(selectedOutputId) || null;
 }
 
+function playSynthNote(note) {
+  if (!synthEnabled || !audioContext || activeOscillators.has(note)) {
+    return;
+  }
+
+  const oscillator = audioContext.createOscillator();
+  const gainNode = audioContext.createGain();
+  gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.12, audioContext.currentTime + 0.03);
+
+  oscillator.type = "triangle";
+  oscillator.frequency.setValueAtTime(midiToFrequency(note), audioContext.currentTime);
+  oscillator.connect(gainNode);
+  gainNode.connect(audioContext.destination);
+  oscillator.start();
+
+  activeOscillators.set(note, { oscillator, gainNode });
+}
+
+function stopSynthNote(note) {
+  const entry = activeOscillators.get(note);
+  if (!entry || !audioContext) {
+    return;
+  }
+
+  const { oscillator, gainNode } = entry;
+  const now = audioContext.currentTime;
+  gainNode.gain.cancelScheduledValues(now);
+  gainNode.gain.setValueAtTime(Math.max(gainNode.gain.value, 0.0001), now);
+  gainNode.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+  oscillator.stop(now + 0.1);
+  activeOscillators.delete(note);
+}
+
 function sendMidiNote(messageType, note) {
   const output = getSelectedMidiOutput();
   if (!output) {
-    return;
+    return false;
   }
 
   const status = messageType === "note_on" ? 0x90 : 0x80;
   output.send([status, note, 0x64]);
+  return true;
+}
+
+function emitNoteOn(note) {
+  const sentToMidi = sendMidiNote("note_on", note);
+  if (!sentToMidi && synthEnabled) {
+    playSynthNote(note);
+  }
+}
+
+function emitNoteOff(note) {
+  const sentToMidi = sendMidiNote("note_off", note);
+  if (!sentToMidi) {
+    stopSynthNote(note);
+  }
 }
 
 function stopAllNotes() {
   for (const note of activeNotes) {
-    sendMidiNote("note_off", note);
+    emitNoteOff(note);
   }
   activeNotes.clear();
 }
@@ -56,12 +132,14 @@ function stopAllNotes() {
 function updateMidiSelection() {
   midiOutputSelect.innerHTML = "";
 
+  const speakerOption = document.createElement("option");
+  speakerOption.value = "";
+  speakerOption.textContent = "Browser speakers only";
+  midiOutputSelect.append(speakerOption);
+
   if (!midiAccess || midiAccess.outputs.size === 0) {
-    const option = document.createElement("option");
-    option.value = "";
-    option.textContent = "No MIDI outputs found";
-    midiOutputSelect.append(option);
     selectedOutputId = "";
+    midiOutputSelect.value = "";
     setStatus(midiStatus, "No MIDI outputs available");
     return;
   }
@@ -73,16 +151,18 @@ function updateMidiSelection() {
     midiOutputSelect.append(option);
   }
 
-  if (!midiAccess.outputs.has(selectedOutputId)) {
-    selectedOutputId = midiOutputSelect.options[0].value;
+  if (selectedOutputId && !midiAccess.outputs.has(selectedOutputId)) {
+    selectedOutputId = "";
   }
 
   midiOutputSelect.value = selectedOutputId;
   const activeOutput = getSelectedMidiOutput();
-  setStatus(midiStatus, activeOutput ? `Connected to ${activeOutput.name}` : "MIDI ready");
+  setStatus(midiStatus, activeOutput ? `Connected to ${activeOutput.name}` : "Using browser speakers");
 }
 
 async function enableMidi() {
+  await ensureAudioReady();
+
   if (!("requestMIDIAccess" in navigator)) {
     setStatus(midiStatus, "Web MIDI is not supported in this browser");
     return;
@@ -121,13 +201,13 @@ function isFingerRaised(landmarks, fingerName, handednessLabel) {
 function syncNotes(nextNotes) {
   for (const note of nextNotes) {
     if (!activeNotes.has(note)) {
-      sendMidiNote("note_on", note);
+      emitNoteOn(note);
     }
   }
 
   for (const note of activeNotes) {
     if (!nextNotes.has(note)) {
-      sendMidiNote("note_off", note);
+      emitNoteOff(note);
     }
   }
 
@@ -138,7 +218,7 @@ function describeActiveChords(chords) {
   if (chords.length === 0) {
     return "None";
   }
-  return chords.join(", ");
+  return [...new Set(chords)].join(", ");
 }
 
 function drawFallbackFrame() {
@@ -146,7 +226,7 @@ function drawFallbackFrame() {
   canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
   canvasCtx.fillStyle = "#132321";
   canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
-  canvasCtx.fillStyle = "rgba(255,255,255,0.8)";
+  canvasCtx.fillStyle = "rgba(255,255,255,0.88)";
   canvasCtx.font = "28px Space Grotesk";
   canvasCtx.fillText("Enable the camera to start tracking your hand.", 42, 80);
   canvasCtx.restore();
@@ -185,14 +265,16 @@ function onResults(results) {
   }
 
   syncNotes(nextNotes);
-  setStatus(chordStatus, describeActiveChords(activeChords));
-  gestureBadge.textContent =
-    activeChords.length > 0 ? `Playing ${describeActiveChords(activeChords)}` : "No hands detected";
+  const chordLabel = describeActiveChords(activeChords);
+  setStatus(chordStatus, chordLabel);
+  gestureBadge.textContent = activeChords.length > 0 ? `Playing ${chordLabel}` : "No hands detected";
 
   canvasCtx.restore();
 }
 
 async function enableCamera() {
+  await ensureAudioReady();
+
   if (!hands) {
     hands = new Hands({
       locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
@@ -208,7 +290,7 @@ async function enableCamera() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: 960, height: 720, facingMode: "user" },
+      video: { width: 1280, height: 720, facingMode: "user" },
       audio: false,
     });
 
@@ -219,7 +301,7 @@ async function enableCamera() {
       onFrame: async () => {
         await hands.send({ image: videoElement });
       },
-      width: 960,
+      width: 1280,
       height: 720,
     });
 
@@ -237,7 +319,7 @@ midiOutputSelect.addEventListener("change", (event) => {
   selectedOutputId = event.target.value;
   stopAllNotes();
   const output = getSelectedMidiOutput();
-  setStatus(midiStatus, output ? `Connected to ${output.name}` : "MIDI ready");
+  setStatus(midiStatus, output ? `Connected to ${output.name}` : "Using browser speakers");
 });
 
 window.addEventListener("beforeunload", () => {
@@ -246,4 +328,5 @@ window.addEventListener("beforeunload", () => {
   tracks.forEach((track) => track.stop());
 });
 
+updateMidiSelection();
 drawFallbackFrame();

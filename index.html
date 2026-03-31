@@ -26,40 +26,54 @@
   </head>
   <body>
     <main class="app-shell">
-      <section class="hero">
-        <div class="hero-copy">
-          <p class="eyebrow">Gesture-controlled MIDI</p>
-          <h1>Play chords with your hands in the browser.</h1>
+      <section class="topbar">
+        <div class="headline">
+          <p class="eyebrow">Gesture-controlled music</p>
+          <h1>Turn your webcam into a chord instrument.</h1>
           <p class="lede">
-            Gesture Tunes uses your webcam for hand tracking and can send notes
-            to any MIDI output your browser exposes.
+            Use your hand in front of the camera to trigger chords. If no MIDI
+            output is available, the app can play through your browser speakers.
           </p>
+        </div>
+
+        <div class="controls-panel">
           <div class="controls">
             <button id="camera-button" class="primary-button">Enable Camera</button>
             <button id="midi-button" class="secondary-button">Enable MIDI</button>
           </div>
+
           <div class="selectors">
             <label class="selector">
               <span>MIDI output</span>
               <select id="midi-output">
-                <option value="">No MIDI output selected</option>
+                <option value="">Browser speakers only</option>
               </select>
             </label>
           </div>
+
           <div class="status-grid">
             <article class="status-card">
               <span class="status-label">Camera</span>
               <strong id="camera-status">Waiting for permission</strong>
             </article>
             <article class="status-card">
+              <span class="status-label">Audio</span>
+              <strong id="audio-status">Browser synth standby</strong>
+            </article>
+            <article class="status-card">
               <span class="status-label">MIDI</span>
               <strong id="midi-status">Waiting for permission</strong>
             </article>
-            <article class="status-card">
+            <article class="status-card wide">
               <span class="status-label">Active chord</span>
               <strong id="chord-status">None</strong>
             </article>
           </div>
+        </div>
+      </section>
+
+      <section class="stage-panel">
+        <div class="stage-copy">
           <p class="note">
             Camera and Web MIDI work best on HTTPS or <code>localhost</code>.
             Chrome or Edge are the safest choices for MIDI support.
