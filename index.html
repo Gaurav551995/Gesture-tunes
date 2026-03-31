@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Gesture Tunes</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="styles.css" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js"
+      crossorigin="anonymous"
+    ></script>
+    <script
+      src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Gesture-controlled MIDI</p>
+          <h1>Play chords with your hands in the browser.</h1>
+          <p class="lede">
+            Gesture Tunes uses your webcam for hand tracking and can send notes
+            to any MIDI output your browser exposes.
+          </p>
+          <div class="controls">
+            <button id="camera-button" class="primary-button">Enable Camera</button>
+            <button id="midi-button" class="secondary-button">Enable MIDI</button>
+          </div>
+          <div class="selectors">
+            <label class="selector">
+              <span>MIDI output</span>
+              <select id="midi-output">
+                <option value="">No MIDI output selected</option>
+              </select>
+            </label>
+          </div>
+          <div class="status-grid">
+            <article class="status-card">
+              <span class="status-label">Camera</span>
+              <strong id="camera-status">Waiting for permission</strong>
+            </article>
+            <article class="status-card">
+              <span class="status-label">MIDI</span>
+              <strong id="midi-status">Waiting for permission</strong>
+            </article>
+            <article class="status-card">
+              <span class="status-label">Active chord</span>
+              <strong id="chord-status">None</strong>
+            </article>
+          </div>
+          <p class="note">
+            Camera and Web MIDI work best on HTTPS or <code>localhost</code>.
+            Chrome or Edge are the safest choices for MIDI support.
+          </p>
+        </div>
+
+        <div class="stage">
+          <video id="input-video" playsinline></video>
+          <canvas id="output-canvas" width="960" height="720"></canvas>
+          <div class="stage-badge" id="gesture-badge">No hands detected</div>
+        </div>
+      </section>
+
+      <section class="mapping-panel">
+        <div>
+          <p class="eyebrow">Finger mapping</p>
+          <h2>Raise fingers to trigger chords</h2>
+        </div>
+        <div class="mapping-grid">
+          <article class="mapping-card">
+            <span>Thumb</span>
+            <strong>C Major</strong>
+            <small>C4 E4 G4</small>
+          </article>
+          <article class="mapping-card">
+            <span>Index</span>
+            <strong>D Major</strong>
+            <small>D4 F#4 A4</small>
+          </article>
+          <article class="mapping-card">
+            <span>Middle</span>
+            <strong>E Minor</strong>
+            <small>E4 G4 B4</small>
+          </article>
+          <article class="mapping-card">
+            <span>Ring</span>
+            <strong>G Major</strong>
+            <small>G4 B4 D5</small>
+          </article>
+          <article class="mapping-card">
+            <span>Pinky</span>
+            <strong>A Minor</strong>
+            <small>A4 C5 E5</small>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
