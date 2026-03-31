@@ -29,9 +29,23 @@ let activeNotes = new Set();
 let audioContext = null;
 let synthEnabled = false;
 const activeOscillators = new Map();
+let pendingGestureSignature = "";
+let pendingGestureFrames = 0;
+
+const GESTURE_STABILITY_FRAMES = 4;
 
 function setStatus(element, message) {
   element.textContent = message;
+}
+
+function normalizeHandedness(label) {
+  if (label === "Left") {
+    return "Right";
+  }
+  if (label === "Right") {
+    return "Left";
+  }
+  return label;
 }
 
 function midiToFrequency(note) {
@@ -222,6 +236,13 @@ function formatHandedness(labels) {
   return [...new Set(labels)].join(" + ");
 }
 
+function serializeTriggers(triggers) {
+  return triggers
+    .map((trigger) => `${trigger.handedness}:${trigger.finger}`)
+    .sort()
+    .join("|");
+}
+
 function syncNotes(nextNotes) {
   for (const note of nextNotes) {
     if (!activeNotes.has(note)) {
@@ -262,12 +283,14 @@ function onResults(results) {
   canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
   const nextNotes = new Set();
-  const activeChords = [];
+  let activeChords = [];
   const visibleHands = [];
+  const rawTriggers = [];
 
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     results.multiHandLandmarks.forEach((landmarks, index) => {
-      const handedness = results.multiHandedness?.[index]?.label || "Unknown";
+      const rawHandedness = results.multiHandedness?.[index]?.label || "Unknown";
+      const handedness = normalizeHandedness(rawHandedness);
       visibleHands.push(handedness);
 
       drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
@@ -288,10 +311,26 @@ function onResults(results) {
 
       const pressedFinger = getPressedFinger(landmarks, handedness);
       if (pressedFinger) {
-        CHORDS[pressedFinger].notes.forEach((note) => nextNotes.add(note));
-        activeChords.push(`${handedness}: ${CHORDS[pressedFinger].name}`);
+        rawTriggers.push({ handedness, finger: pressedFinger });
       }
     });
+  }
+
+  const gestureSignature = serializeTriggers(rawTriggers);
+  if (gestureSignature === pendingGestureSignature) {
+    pendingGestureFrames += 1;
+  } else {
+    pendingGestureSignature = gestureSignature;
+    pendingGestureFrames = 1;
+  }
+
+  if (gestureSignature && pendingGestureFrames >= GESTURE_STABILITY_FRAMES) {
+    rawTriggers.forEach(({ handedness, finger }) => {
+      CHORDS[finger].notes.forEach((note) => nextNotes.add(note));
+      activeChords.push(`${handedness}: ${CHORDS[finger].name}`);
+    });
+  } else if (!gestureSignature) {
+    activeChords = [];
   }
 
   syncNotes(nextNotes);
