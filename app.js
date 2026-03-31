@@ -1,9 +1,20 @@
-const CHORDS = {
-  thumb: { name: "C Major", notes: [60, 64, 67] },
-  index: { name: "D Major", notes: [62, 66, 69] },
-  middle: { name: "E Minor", notes: [64, 67, 71] },
-  ring: { name: "G Major", notes: [67, 71, 74] },
-  pinky: { name: "A Minor", notes: [69, 72, 76] },
+const FINGER_ORDER = ["thumb", "index", "middle", "ring", "pinky"];
+
+const HAND_CHORDS = {
+  Left: {
+    thumb: { name: "C Major", notes: [48, 52, 55] },
+    index: { name: "D Major", notes: [50, 54, 57] },
+    middle: { name: "E Minor", notes: [52, 55, 59] },
+    ring: { name: "G Major", notes: [55, 59, 62] },
+    pinky: { name: "A Minor", notes: [57, 60, 64] },
+  },
+  Right: {
+    thumb: { name: "C Major", notes: [60, 64, 67] },
+    index: { name: "D Major", notes: [62, 66, 69] },
+    middle: { name: "E Minor", notes: [64, 67, 71] },
+    ring: { name: "G Major", notes: [67, 71, 74] },
+    pinky: { name: "A Minor", notes: [69, 72, 76] },
+  },
 };
 
 const videoElement = document.getElementById("input-video");
@@ -214,19 +225,23 @@ function isFingerRaised(landmarks, fingerName, handednessLabel) {
 }
 
 function getRaisedFingers(landmarks, handednessLabel) {
-  return Object.keys(CHORDS).filter((fingerName) =>
+  return FINGER_ORDER.filter((fingerName) =>
     isFingerRaised(landmarks, fingerName, handednessLabel)
   );
 }
 
-function getPressedFinger(landmarks, handednessLabel) {
+function getPressedFingers(landmarks, handednessLabel) {
   const raisedFingers = getRaisedFingers(landmarks, handednessLabel);
-  if (raisedFingers.length !== 4) {
-    return null;
+  if (raisedFingers.length < 2) {
+    return [];
   }
 
-  const pressedFingers = Object.keys(CHORDS).filter((fingerName) => !raisedFingers.includes(fingerName));
-  return pressedFingers.length === 1 ? pressedFingers[0] : null;
+  const pressedFingers = FINGER_ORDER.filter((fingerName) => !raisedFingers.includes(fingerName));
+  if (pressedFingers.length === 0 || pressedFingers.length > 3) {
+    return [];
+  }
+
+  return pressedFingers;
 }
 
 function formatHandedness(labels) {
@@ -309,10 +324,10 @@ function onResults(results) {
       canvasCtx.font = "24px Space Grotesk";
       canvasCtx.fillText(handedness, wrist.x * canvasElement.width + 12, wrist.y * canvasElement.height - 12);
 
-      const pressedFinger = getPressedFinger(landmarks, handedness);
-      if (pressedFinger) {
-        rawTriggers.push({ handedness, finger: pressedFinger });
-      }
+      const pressedFingers = getPressedFingers(landmarks, handedness);
+      pressedFingers.forEach((finger) => {
+        rawTriggers.push({ handedness, finger });
+      });
     });
   }
 
@@ -326,8 +341,8 @@ function onResults(results) {
 
   if (gestureSignature && pendingGestureFrames >= GESTURE_STABILITY_FRAMES) {
     rawTriggers.forEach(({ handedness, finger }) => {
-      CHORDS[finger].notes.forEach((note) => nextNotes.add(note));
-      activeChords.push(`${handedness}: ${CHORDS[finger].name}`);
+      HAND_CHORDS[handedness][finger].notes.forEach((note) => nextNotes.add(note));
+      activeChords.push(`${handedness} ${finger}: ${HAND_CHORDS[handedness][finger].name}`);
     });
   } else if (!gestureSignature) {
     activeChords = [];
@@ -338,7 +353,7 @@ function onResults(results) {
   const chordLabel = describeActiveChords(activeChords);
   setStatus(chordStatus, chordLabel);
   gestureBadge.textContent =
-    activeChords.length > 0 ? `Playing ${chordLabel}` : visibleHands.length > 0 ? "Open hand ready. Press one finger." : "No hands detected";
+    activeChords.length > 0 ? `Playing ${chordLabel}` : visibleHands.length > 0 ? "Open hand ready. Press one or more fingers." : "No hands detected";
 
   canvasCtx.restore();
 }
@@ -378,7 +393,7 @@ async function enableCamera() {
 
     await camera.start();
     setStatus(cameraStatus, "Camera connected");
-    gestureBadge.textContent = "Show an open hand, then press one finger";
+    gestureBadge.textContent = "Show an open hand, then press one or more fingers";
   } catch (error) {
     setStatus(cameraStatus, `Camera permission failed: ${error.message}`);
   }
