@@ -17,6 +17,7 @@ const midiOutputSelect = document.getElementById("midi-output");
 const cameraStatus = document.getElementById("camera-status");
 const audioStatus = document.getElementById("audio-status");
 const midiStatus = document.getElementById("midi-status");
+const handStatus = document.getElementById("hand-status");
 const chordStatus = document.getElementById("chord-status");
 const gestureBadge = document.getElementById("gesture-badge");
 
@@ -204,6 +205,23 @@ function getRaisedFingers(landmarks, handednessLabel) {
   );
 }
 
+function getPressedFinger(landmarks, handednessLabel) {
+  const raisedFingers = getRaisedFingers(landmarks, handednessLabel);
+  if (raisedFingers.length !== 4) {
+    return null;
+  }
+
+  const pressedFingers = Object.keys(CHORDS).filter((fingerName) => !raisedFingers.includes(fingerName));
+  return pressedFingers.length === 1 ? pressedFingers[0] : null;
+}
+
+function formatHandedness(labels) {
+  if (labels.length === 0) {
+    return "No hands detected";
+  }
+  return [...new Set(labels)].join(" + ");
+}
+
 function syncNotes(nextNotes) {
   for (const note of nextNotes) {
     if (!activeNotes.has(note)) {
@@ -245,10 +263,12 @@ function onResults(results) {
 
   const nextNotes = new Set();
   const activeChords = [];
+  const visibleHands = [];
 
   if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
     results.multiHandLandmarks.forEach((landmarks, index) => {
       const handedness = results.multiHandedness?.[index]?.label || "Unknown";
+      visibleHands.push(handedness);
 
       drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {
         color: "#ffd166",
@@ -261,19 +281,25 @@ function onResults(results) {
         radius: 4,
       });
 
-      const raisedFingers = getRaisedFingers(landmarks, handedness);
-      if (raisedFingers.length === 1) {
-        const activeFinger = raisedFingers[0];
-        CHORDS[activeFinger].notes.forEach((note) => nextNotes.add(note));
-        activeChords.push(CHORDS[activeFinger].name);
+      const wrist = landmarks[0];
+      canvasCtx.fillStyle = "#ffffff";
+      canvasCtx.font = "24px Space Grotesk";
+      canvasCtx.fillText(handedness, wrist.x * canvasElement.width + 12, wrist.y * canvasElement.height - 12);
+
+      const pressedFinger = getPressedFinger(landmarks, handedness);
+      if (pressedFinger) {
+        CHORDS[pressedFinger].notes.forEach((note) => nextNotes.add(note));
+        activeChords.push(`${handedness}: ${CHORDS[pressedFinger].name}`);
       }
     });
   }
 
   syncNotes(nextNotes);
+  setStatus(handStatus, formatHandedness(visibleHands));
   const chordLabel = describeActiveChords(activeChords);
   setStatus(chordStatus, chordLabel);
-  gestureBadge.textContent = activeChords.length > 0 ? `Playing ${chordLabel}` : "No hands detected";
+  gestureBadge.textContent =
+    activeChords.length > 0 ? `Playing ${chordLabel}` : visibleHands.length > 0 ? "Open hand ready. Press one finger." : "No hands detected";
 
   canvasCtx.restore();
 }
@@ -313,7 +339,7 @@ async function enableCamera() {
 
     await camera.start();
     setStatus(cameraStatus, "Camera connected");
-    gestureBadge.textContent = "Raise one finger to trigger a chord";
+    gestureBadge.textContent = "Show an open hand, then press one finger";
   } catch (error) {
     setStatus(cameraStatus, `Camera permission failed: ${error.message}`);
   }
